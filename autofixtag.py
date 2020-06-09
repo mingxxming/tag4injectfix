@@ -75,7 +75,7 @@ def unpack(content):
 
     def checkcls(tp, line, numb, dic, n):
         isnew = False
-        clss = re.findall('(?<=\s%s\s)\w+(?=\s)' % tp, line)
+        clss = re.findall('(?<=\s%s\s)\w+' % tp, line)
         if len(clss) > 0:
             n = clss[0]
             dic[n] = ""
