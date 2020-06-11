@@ -205,7 +205,7 @@ if __old_gitv:
         for one in fits:
             if "autofixtag.py" in one:
                 continue
-            fitcs = re.findall(r'(?<=a/).*?cs\b', one)
+            fitcs = re.findall(r'(?<=a/).*[.]cs\b(?= b/)', one)
             if len(fitcs) > 0:
                 path = fitcs[0]
                 if not is_ignored(path):
