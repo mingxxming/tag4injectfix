@@ -4,8 +4,10 @@ import re
 __old_gitv = 'xxxxxxxx'
 __ignores = [".*/Editor/.*"]
 
-print("此工具会将本地修改还原到HEAD 版本，提前commit代码。确定无误后注释下面一行代码重新执行工具。\n(This will revert to HEAD.Backup you code and uncomment next line.)")
+print(
+    "此工具会将本地修改还原到HEAD 版本，提前commit代码。确定无误后注释下面一行代码重新执行工具。\n(This will revert to HEAD.Backup you code and uncomment next line.)")
 __old_gitv = ''
+
 
 def is_ignored(one):
     for x in __ignores:
@@ -71,9 +73,10 @@ def unpack(content):
     propb = 0
     nfield = ''
     fieldb = 0
+    incomment = False
     sps = content.split("\n")
 
-    def checkcls(tp, line, numb, dic, n):
+    def checkcls(tp, line, numb, dic, n, bs, be):
         isnew = False
         clss = re.findall('(?<=\s%s\s)\w+' % tp, line)
         if len(clss) > 0:
@@ -81,10 +84,10 @@ def unpack(content):
             dic[n] = ""
             isnew = True
         if n:
-            if "{" in line:
+            if bs:
                 numb += 1
             dic[n] += line
-            if "}" in line:
+            if be:
                 numb -= 1
                 if numb == 0:
                     n = ""
@@ -94,17 +97,26 @@ def unpack(content):
 
     for i in range(0, len(sps)):
         line = sps[i]
-        ncls, classb, aisnew = checkcls("class", line, classb, classes, ncls)
-        nstruct, structb, bisnew = checkcls("struct", line, structb, structs, nstruct)
-        nenum, enumb, cisnew = checkcls("enum", line, enumb, enums, nenum)
-        isnew = aisnew or bisnew or cisnew
+
+        if not incomment:
+            incomment = "/*" in line
+        else:
+            if "*/" in line:
+                incomment = False
+        iscomment = "*/" in line or len(re.findall(r'<param.*param>', line)) > 0 or "///" in line or len(re.findall(r"\n\s*//.*", "\n" + line)) > 0
+        blockstart = "{" in line and not incomment and not iscomment
+        blockend = "}" in line and not incomment and not iscomment
+        if not incomment:
+            ncls, classb, aisnew = checkcls("class", line, classb, classes, ncls, blockstart, blockend)
+            nstruct, structb, bisnew = checkcls("struct", line, structb, structs, nstruct, blockstart, blockend)
+            nenum, enumb, cisnew = checkcls("enum", line, enumb, enums, nenum, blockstart, blockend)
+            isnew = aisnew or bisnew or cisnew
         if not ncls and not nstruct and not nenum and "}" not in line:
             head += line + "\n"
         if ncls or nstruct:
             ntp = ncls if ncls else nstruct
-            if len(re.findall(r'<param.*param>', line)) > 0 or "///" in line:
-                continue
-            if not nprop and not nmethod and ";" not in line:
+
+            if not nprop and not nmethod and ";" not in line and not iscomment and not incomment:
                 mets = re.findall(r'(?<=\s)[\w<>]+(?=[\s]*\()', line)
                 if len(mets) > 0 and mets[0]:
                     nmethod = mets[0]
@@ -112,10 +124,10 @@ def unpack(content):
                         methods[ntp] = {}
                     methods[ntp][nmethod] = ""
             if nmethod:
-                if "{" in line:
+                if blockstart:
                     methodb += 1
                 methods[ntp][nmethod] += line + "\n"
-                if "}" in line:
+                if blockend:
                     methodb -= 1
                     if methodb == 0:
                         nmethod = ""
@@ -129,7 +141,7 @@ def unpack(content):
                         tl = tl.replace(t, "")
                     istag = len(re.findall(r'\w+', tl)) <= 0
                 if not nprop and not istag:
-                    if '=' in line or ';' in line:
+                    if ('=' in line or ';' in line) and not incomment and not iscomment:
                         fis = re.findall(r'(?<=\s)\w+(?=\s*\=)', line)
                         if len(fis) <= 0:
                             fis = re.findall(r'(?<=\s)\w+(?=\s*\;)', line)
@@ -140,28 +152,28 @@ def unpack(content):
                             fields[ntp][nfield] = ""
                     else:
                         props = re.findall(r'(?<=\s)\w+(?=\s*\{)', line)
-                        if len(props) > 0 and props[0] != ntp:
+                        if len(props) > 0 and props[0] != ntp and not incomment and not iscomment:
                             nprop = props[0]
                             if ntp not in properties:
                                 properties[ntp] = {}
                             properties[ntp][nprop] = ""
 
                 if nprop:
-                    if "{" in line:
+                    if blockstart:
                         propb += 1
                     properties[ntp][nprop] += line + "\n"
-                    if "}" in line:
+                    if blockend:
                         propb -= 1
                         if propb == 0:
                             nprop = ""
                 else:
                     if nfield:
-                        if "{" in line:
+                        if blockstart:
                             fieldb += 1
                         fields[ntp][nfield] += line + "\n"
-                        if ";" in fields[ntp][nfield]:
+                        if ";" in fields[ntp][nfield] and not incomment and not iscomment:
                             nfield = ""
-                        if "}" in line:
+                        if blockend:
                             fieldb -= 1
                             if fieldb == 0:
                                 nfield = ""
@@ -193,6 +205,7 @@ def unpack(content):
     #     for k, v in mets.items():
     #         print("method:", k, "tp:", tp)
     #         print(v)
+    #         print("---------------------------------------")
     # print("head:\n", head)
     return head, classes, structs, enums, methods, properties, fields
 
@@ -241,7 +254,8 @@ if __old_gitv:
                                         if fd not in newads[tp]:
                                             newads[tp].append(fd)
                                     else:
-                                        if ndic[tp][fd].replace("\n", "").replace("\r", "").replace(" ", "") != odic[tp][fd].replace("\n", "").replace("\r", "").replace(" ", ""):
+                                        if ndic[tp][fd].replace("\n", "").replace("\r", "").replace(" ", "") != \
+                                                odic[tp][fd].replace("\n", "").replace("\r", "").replace(" ", ""):
                                             if tp not in diffs:
                                                 diffs[tp] = []
                                             if fd not in diffs[tp]:
@@ -253,31 +267,37 @@ if __old_gitv:
                         dif, adds = checkdiff(fields, ofields)
                         for tp, diffs in dif.items():
                             for x in diffs:
-                                print("property not support ", tp, fields[tp][x])
+                                print("=======================property not support ", tp, fields[tp][x])
                         for tp, diffs in adds.items():
                             for x in diffs:
-                                print("property not support ", tp, fields[tp][x])
+                                print("=======================property not support ", tp, fields[tp][x])
                         dif, adds = checkdiff(properties, oproperties)
                         for tp, diffs in dif.items():
                             for x in diffs:
-                                print("property not support ", tp, properties[tp][x])
+                                print("=======================property not support ", tp, properties[tp][x])
                         for tp, diffs in adds.items():
                             for x in diffs:
-                                print("property not support ", tp, properties[tp][x])
+                                print("=======================property not support ", tp, properties[tp][x])
                         dif, adds = checkdiff(methods, omethods)
                         for tp, diffs in dif.items():
                             needtag = True
                             for x in diffs:
-                                if x == tp:
-                                    print("not support for construct ", tp, x)
+                                ma = re.findall(r"[^)]*\)", methods[tp][x])[0].replace(" ", "").replace("\r",
+                                                                                                        "").replace(
+                                    "\n", "")
+                                if ma not in omethods[tp][x].replace(" ", "").replace("\r", "").replace("\n", ""):
+                                    print("=======================not support params change ", tp, x)
                                 else:
-                                    c = methods[tp][x][:len(methods[tp][x]) - 1]
-                                    content = content.replace(c, "    [IFix.Patch]\n" + c)
+                                    if x == tp:
+                                        print("=======================not support for construct ", tp, x)
+                                    else:
+                                        c = methods[tp][x][:len(methods[tp][x]) - 1]
+                                        content = content.replace(c, "    [IFix.Patch]\n" + c)
                         for tp, diffs in adds.items():
                             needtag = True
                             for x in diffs:
                                 if "override" in methods[tp][x] or tp == x:
-                                    print("not support for override or construct", tp, x)
+                                    print("=======================not support for override or construct", tp, x)
                                 else:
                                     c = methods[tp][x][:len(methods[tp][x]) - 1]
                                     content = content.replace(c, "    [IFix.Interpret]\n" + c)
