@@ -6,7 +6,6 @@ __ignores = [".*/Editor/.*"]
 
 print(
     "此工具会将本地修改还原到HEAD 版本，提前commit代码。确定无误后注释下面一行代码重新执行工具。\n(This will revert to HEAD.Backup you code and uncomment next line.)")
-__old_gitv = ''
 
 
 def is_ignored(one):
@@ -85,10 +84,14 @@ def unpack(content):
             isnew = True
         if n:
             if bs:
-                numb += 1
+                for x in line:
+                    if "{" == x:
+                        numb += 1
             dic[n] += line
             if be:
-                numb -= 1
+                for x in line:
+                    if "}" == x:
+                        numb -= 1
                 if numb == 0:
                     n = ""
             if n:
@@ -104,8 +107,10 @@ def unpack(content):
             if "*/" in line:
                 incomment = False
         iscomment = "*/" in line or len(re.findall(r'<param.*param>', line)) > 0 or "///" in line or len(re.findall(r"\n\s*//.*", "\n" + line)) > 0
-        blockstart = "{" in line and not incomment and not iscomment
-        blockend = "}" in line and not incomment and not iscomment
+        fline = re.findall(r"\w+\s*//", line)
+        fline = fline[0] if len(fline) > 0 else line
+        blockstart = "{" in fline and not incomment and not iscomment
+        blockend = "}" in fline and not incomment and not iscomment
         if not incomment:
             ncls, classb, aisnew = checkcls("class", line, classb, classes, ncls, blockstart, blockend)
             nstruct, structb, bisnew = checkcls("struct", line, structb, structs, nstruct, blockstart, blockend)
@@ -200,11 +205,11 @@ def unpack(content):
     #     for k, v in pps.items():
     #         print("prop:", k, "tp:", tp)
     #         print(v)
-
     # for tp, mets in methods.items():
+    #     for a, b in classes.items():
+    #         print("class--------------", a)
     #     for k, v in mets.items():
     #         print("method:", k, "tp:", tp)
-    #         print(v)
     #         print("---------------------------------------")
     # print("head:\n", head)
     return head, classes, structs, enums, methods, properties, fields
